@@ -1,0 +1,8 @@
+../Core/Src/modbus_rtu.c:61:17:CRC16	24	static
+../Core/Src/modbus_rtu.c:75:6:Modbus_Init	16	static
+../Core/Src/modbus_rtu.c:87:13:Modbus_ErrorReply	16	static
+../Core/Src/modbus_rtu.c:97:13:Modbus_WriteSingleRegister	24	static
+../Core/Src/modbus_rtu.c:116:13:Modbus_ReadHoldingRegisters	24	static
+../Core/Src/modbus_rtu.c:146:13:Modbus_Dispatch	16	static
+../Core/Src/modbus_rtu.c:165:13:Modbus_Emit	24	static
+../Core/Src/modbus_rtu.c:181:6:Modbus_Process	24	static

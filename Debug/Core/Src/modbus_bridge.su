@@ -1,0 +1,6 @@
+../Core/Src/modbus_bridge.c:40:13:ModbusBridge_HandleCommands	16	static
+../Core/Src/modbus_bridge.c:115:6:ModbusBridge_Init	8	static
+../Core/Src/modbus_bridge.c:132:6:ModbusBridge_Process	8	static
+../Core/Src/modbus_bridge.c:141:6:ModbusBridge_UpdateRegisters	16	static
+../Core/Src/modbus_bridge.c:167:6:ModbusBridge_RxCallback	16	static
+../Core/Src/modbus_bridge.c:184:6:ModbusBridge_TimerCallback	8	static
