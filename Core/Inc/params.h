@@ -26,7 +26,7 @@
  * ============================================================================ */
 
 #define JOG_SPEED_FINE      5.0f
-#define MOVE_SPEED_COARSE   30.0f  /**< As requested from image */
+#define MOVE_SPEED_COARSE   50.0f  /**< As requested from image */
 
 #define STEP_SIZE_COARSE    10.0f
 #define STEP_SIZE_FINE      1.0f
