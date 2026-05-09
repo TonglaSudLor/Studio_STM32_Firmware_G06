@@ -146,6 +146,7 @@ typedef struct {
     float target_vel;
     float current_setpoint_pos;
     float current_setpoint_vel;
+    float current_setpoint_accel;
 } Trajectory_State_t;
 
 /* --- Ghost Mode Buffering --- */

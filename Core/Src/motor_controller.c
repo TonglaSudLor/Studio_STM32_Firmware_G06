@@ -159,28 +159,86 @@ static void Encoder_Update(void)
 }
 
 /**
- * @brief Update trajectory setpoints for smooth movement
+ * @brief Update trajectory setpoints for smooth movement using S-Curve profile
+ * 
+ * This implementation uses a 3rd order trajectory (jerk-limited) to ensure 
+ * smooth transitions between acceleration and constant velocity phases.
  */
 static void Trajectory_Generator_Update(void)
 {
     float error = trajectory.target_pos - trajectory.current_setpoint_pos;
-    float stop_dist_deg = 360.0f * (trajectory.current_setpoint_vel * trajectory.current_setpoint_vel) / (2.0f * tuning.max_accel * 60.0f);
+    float abs_error = fabsf(error);
+    float v_current = trajectory.current_setpoint_vel;
     
-    float target_v = tuning.move_speed_coarse;
-    if (fabsf(error) < stop_dist_deg) {
-        target_v = sqrtf(2.0f * (tuning.max_accel / 60.0f) * (fabsf(error) / 360.0f)) * 60.0f;
+    // 1. Exit condition: Very close and almost stopped
+    if (abs_error < 0.02f && fabsf(v_current) < 0.1f) {
+        trajectory.current_setpoint_pos = trajectory.target_pos;
+        trajectory.current_setpoint_vel = 0.0f;
+        trajectory.current_setpoint_accel = 0.0f;
+        return;
+    }
+
+    float max_v = motion_config.max_velocity;
+    float max_a = motion_config.max_acceleration;
+    float smoothing = motion_config.jerk_smoothing;
+    
+    // Jerk Time (Time to reach max acceleration)
+    float T_j = smoothing * 0.25f; // Map 0..1 to 0..0.25s
+    if (T_j < control_dt) T_j = control_dt;
+    float jerk = max_a / T_j;
+
+    // S-Curve Braking Distance Calculation:
+    // d_stop = d_trapezoidal + d_jerk_lag
+    // d_jerk_lag = v * (T_j / 2)
+    float v_rps = v_current / 60.0f;
+    float d_trap = (360.0f * v_rps * v_rps) / (2.0f * (max_a / 60.0f));
+    float d_jerk = fabsf(v_current) * T_j * 3.0f; // 3.0 = (360/60)/2
+    float stop_dist_s = d_trap + d_jerk;
+    
+    // 2. Determine Target Acceleration
+    float target_accel = 0.0f;
+    bool is_moving_towards = (error * v_current >= 0 || fabsf(v_current) < 0.1f);
+
+    if (is_moving_towards) {
+        if (abs_error < stop_dist_s) {
+            // DECELERATION: Ramp accel towards -max_a
+            target_accel = (error > 0) ? -max_a : max_a;
+        } else {
+            // ACCELERATION: Ramp accel towards max_a (limit by max_v)
+            if (fabsf(v_current) < max_v) {
+                target_accel = (error > 0) ? max_a : -max_a;
+            } else {
+                target_accel = 0.0f; // Cruising at max_v
+            }
+        }
+    } else {
+        // OVERSHOT: High priority deceleration to zero
+        target_accel = (v_current > 0) ? -max_a : max_a;
+    }
+
+    // 3. Apply Jerk limit to Acceleration
+    float accel_error = target_accel - trajectory.current_setpoint_accel;
+    float jerk_step = jerk * control_dt;
+    
+    if (fabsf(accel_error) < jerk_step) {
+        trajectory.current_setpoint_accel = target_accel;
+    } else {
+        if (accel_error > 0) trajectory.current_setpoint_accel += jerk_step;
+        else trajectory.current_setpoint_accel -= jerk_step;
     }
     
-    if (error < 0) target_v = -target_v;
+    // Clamp acceleration
+    if (trajectory.current_setpoint_accel > max_a) trajectory.current_setpoint_accel = max_a;
+    if (trajectory.current_setpoint_accel < -max_a) trajectory.current_setpoint_accel = -max_a;
+
+    // 4. Update Velocity and Position
+    trajectory.current_setpoint_vel += trajectory.current_setpoint_accel * control_dt;
     
-    float v_step = tuning.max_accel * control_dt;
-    if (target_v > trajectory.current_setpoint_vel + v_step)
-        trajectory.current_setpoint_vel += v_step;
-    else if (target_v < trajectory.current_setpoint_vel - v_step)
-        trajectory.current_setpoint_vel -= v_step;
-    else
-        trajectory.current_setpoint_vel = target_v;
-        
+    // Prevent sign flip and overshoot due to Jerk lag during final stop
+    if (abs_error < 0.2f && fabsf(trajectory.current_setpoint_vel) < 2.0f) {
+        if (!is_moving_towards) trajectory.current_setpoint_vel = 0;
+    }
+
     trajectory.current_setpoint_pos += (trajectory.current_setpoint_vel / 60.0f) * 360.0f * control_dt;
 }
 
@@ -227,6 +285,15 @@ void Motor_Init(void)
     pid_position.Ki = tuning.pos_Ki; 
     pid_position.Kd = tuning.pos_Kd;
     pid_position.integral_max = POS_INTEGRAL_MAX;
+    
+    // Initialize motion profile defaults with user-calculated S-curve params
+    motion_config.max_velocity = tuning.move_speed_coarse;
+    motion_config.max_acceleration = tuning.max_accel;
+    // Jerk time Tj = 0.01963s. Smoothing factor = Tj / 0.25 ≈ 0.0785
+    motion_config.jerk_smoothing = 0.0785f; 
+    
+    // Increase control loop speed inner gain slightly for better tracking
+    pid_speed.Kp = 1.5f; 
     
     // Start hardware peripherals
     HAL_TIM_Encoder_Start(&htim3, TIM_CHANNEL_ALL);
